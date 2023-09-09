@@ -3,14 +3,13 @@ import websockets
 import uuid
 import json
 from gpt4all import GPT4All
+from scraper import scrape_website
 
 relay = "wss://relay.damus.io"
 
 # 65003 = Summarize
 kinds = "[65003]"
 limit = "100"
-
-model = GPT4All("orca-mini-3b.ggmlv3.q4_0.bin")
 
 
 async def handle_request(uri, message):
@@ -38,12 +37,22 @@ async def handle_request(uri, message):
                     # originalContent = await single_request_ws(uri, originalContentId)
                     break
                 elif (tag[2] == "url"):
+                    model = GPT4All("orca-mini-3b.ggmlv3.q4_0.bin")
                     # scrape the url
                     print("Scraping URL: " + tag[1])
+                    text = scrape_website(tag[1])
+                    # cut text to 2040 chars
+                    text = text[:2040]
+                    output = model.generate("Summarize the following text: " + text)
+                    print("Output: " + output)
                     break
                 elif (tag[2] == "text"):
+                    model = GPT4All("orca-mini-3b.ggmlv3.q4_0.bin")
                     # scrape the url
                     print("Using Text: " + tag[1])
+                    text = tag[1]
+                    output = model.generate("Summarize the following text: " + text)
+                    print("Output: " + output)
                     break
                 elif (tag[2] == "job"):
                     # scrape the other jobs response
