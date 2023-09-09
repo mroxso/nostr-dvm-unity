@@ -1,56 +1,88 @@
 import asyncio
 import websockets
-import os
 import uuid
 import json
-from pynostr.event import Event, EventKind
-from pynostr.relay_manager import RelayManager
-from pynostr.message_type import ClientMessageType
-from pynostr.key import PrivateKey
-from pynostr.filters import FiltersList, Filters
-from pynostr.encrypted_dm import EncryptedDirectMessage
 from gpt4all import GPT4All
 
-fallback_relay = "wss://relay.damus.io"
+relay = "wss://relay.damus.io"
 
-system_message = "You are a Data Vending Machine. Your job is to translate the input and output the translated version. Nothing more."
+# 65003 = Summarize
+kinds = "[65003]"
+limit = "100"
 
-relay_manager = RelayManager(timeout=2)
+model = GPT4All("orca-mini-3b.ggmlv3.q4_0.bin")
 
-env_private_key = os.environ.get("PRIVATE_KEY")
-if not env_private_key:
-    # print('The environment variable "PRIVATE_KEY" is not set.')
-    # exit(1)
-    env_private_key = PrivateKey().hex()
-private_key = PrivateKey(bytes.fromhex(env_private_key))
 
-env_relays = os.getenv('RELAYS')
-if env_relays is None:
-    env_relays = "wss://relay.damus.io"
-for relay in env_relays.split(","):
-    print("Adding relay: " + relay)
-    relay_manager.add_relay(relay)
+async def handle_request(uri, message):
+    # Add your request handling logic here
+    messageJson = json.loads(message)
+    if(messageJson[0] != "EOSE"):
+        event = messageJson[2]
+        content = event["content"]
+        tags = event["tags"]
 
-print("Pubkey: " + private_key.public_key.bech32())
-print("Pubkey (hex): " + private_key.public_key.hex())
+        originalContent = ""
+        originalContentId = ""
 
-async def connect_and_listen():
-    # Connect to the WebSocket server
-    async with websockets.connect(fallback_relay) as websocket:
+        # print(tags)
+        for tag in tags:
+            # print(tag)
+            if(tag[0] == "i"):
+                # print("Found i tag")
+                # print(tag[1])
+                # originalContentId = tag[1]
+                # originalContent = await single_request_ws(uri, originalContentId)
+                if (tag[2] == "event"):
+                    originalContentId = tag[1]
+                    print("Scraping nostr event with ID: " + originalContentId)
+                    # originalContent = await single_request_ws(uri, originalContentId)
+                    break
+                elif (tag[2] == "url"):
+                    # scrape the url
+                    print("Scraping URL: " + tag[1])
+                    break
+                elif (tag[2] == "text"):
+                    # scrape the url
+                    print("Using Text: " + tag[1])
+                    break
+                elif (tag[2] == "job"):
+                    # scrape the other jobs response
+                    print("Scraping nostr DVM Job with ID: " + tag[1])
+                    break
+
+        # print("Original Content: " + originalContent)
+
+    # else:
+        # EOSE
+        # print(f"{messageJson}")
+
+async def single_request_ws(uri, originalContentId):
+    async with websockets.connect(uri) as ws:
+        # Send the message
         subscription_id = str(uuid.uuid1().hex)
-        # Send a message
-        msgstr = '["REQ",' + f'"{subscription_id}"' + ', {"kinds": [65004], "limit": 1000}]'
-        await websocket.send(msgstr)
+        msgstr = '["REQ",' + f'"{subscription_id}"' + ', {"kinds": [1], "ids": [' + originalContentId + ']}]'
+        await ws.send(msgstr)
 
-        # Listen for responses
+        # Wait for response
+        response = await ws.recv()
+        return response
+
+async def connect_to_ws(uri, send_message):
+    async with websockets.connect(uri) as ws:
+        # Send the initial message
+        await ws.send(send_message)
+
+        # Keep waiting for new messages
         while True:
-            response = await websocket.recv()
-            responseJson = json.loads(response)
-            # Process the received response
-            if responseJson[0] == "EVENT":
-                print(f"{responseJson[2]}")
-            elif responseJson[0] == "EOSE":
-                print(f"{responseJson}")
+            response = await ws.recv()
+            asyncio.create_task(handle_request(uri, response))
 
-# Run the event loop
-asyncio.get_event_loop().run_until_complete(connect_and_listen())
+async def main():
+    # await connect_to_ws('ws://localhost:8080', 'Hello, server!')
+
+    subscription_id = str(uuid.uuid1().hex)
+    msgstr = '["REQ",' + f'"{subscription_id}"' + ', {"kinds": ' + kinds + ', "limit": ' + limit + '}]'
+    await connect_to_ws(relay, msgstr)
+
+# Start the event loop
+asyncio.run(main())
