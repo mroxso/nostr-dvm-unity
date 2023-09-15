@@ -4,3 +4,4 @@ requests
 pynostr
 gpt4all
 beautifulsoup4
+websockets

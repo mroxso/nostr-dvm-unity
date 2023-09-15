@@ -6,6 +6,9 @@ from gpt4all import GPT4All
 from scraper import scrape_website
 
 relay = "wss://relay.damus.io"
+# modelName = "orca-mini-3b.ggmlv3.q4_0.bin"
+# modelName = "wizardlm-13b-v1.1-superhot-8k.ggmlv3.q4_0"
+modelName = "llama-2-7b-chat.ggmlv3.q4_0"
 
 # 65003 = Summarize
 kinds = "[65003]"
@@ -37,22 +40,31 @@ async def handle_request(uri, message):
                     # originalContent = await single_request_ws(uri, originalContentId)
                     break
                 elif (tag[2] == "url"):
-                    model = GPT4All("orca-mini-3b.ggmlv3.q4_0.bin")
-                    # scrape the url
+                    model = GPT4All(modelName)
+                    # scrape and truncate the url
+                    print("=====================================")
                     print("Scraping URL: " + tag[1])
-                    text = scrape_website(tag[1])
-                    # cut text to 2040 chars
-                    text = text[:2040]
+                    print("=====================================")
+                    text = truncate_text(scrape_website(tag[1]))
+                    print("=====================================")
+                    print("Using Text: " + text)
+                    print("=====================================")
                     output = model.generate("Summarize the following text: " + text)
+                    print("=====================================")
                     print("Output: " + output)
+                    print("=====================================")
                     break
                 elif (tag[2] == "text"):
-                    model = GPT4All("orca-mini-3b.ggmlv3.q4_0.bin")
+                    model = GPT4All(modelName)
                     # scrape the url
+                    print("=====================================")
                     print("Using Text: " + tag[1])
+                    print("=====================================")
                     text = tag[1]
                     output = model.generate("Summarize the following text: " + text)
+                    print("=====================================")
                     print("Output: " + output)
+                    print("=====================================")
                     break
                 elif (tag[2] == "job"):
                     # scrape the other jobs response
@@ -64,6 +76,16 @@ async def handle_request(uri, message):
     # else:
         # EOSE
         # print(f"{messageJson}")
+
+def truncate_text(text):
+    if len(text) <= 4000:
+        return text
+    else:
+        last_period_index = text[:4000].rfind('.')
+        if last_period_index != -1:
+            return text[:last_period_index+1]
+        else:
+            return text[:4000]
 
 async def single_request_ws(uri, originalContentId):
     async with websockets.connect(uri) as ws:
